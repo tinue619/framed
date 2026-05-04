@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>inglass.kz — Администрирование</title>
+</head>
+<body>
+
+<div class="admin-layout">
+
+  <header class="admin-header">
+    <span class="brand-name">inglass.kz</span>
+    <span class="sep">|</span>
+    <span class="section-title" id="header-title">Администрирование</span>
+    <div class="spacer"></div>
+  </header>
+
+  <div class="admin-body">
+    <nav class="admin-sidebar">
+      <a class="sidebar-nav-item" data-screen="products" href="#products">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Изделия
+      </a>
+      <a class="sidebar-nav-item" data-screen="section-editor" href="#section-editor">
+        <svg viewBox="0 0 24 24"><path d="M3 3h7v7H3z"/><path d="M14 3h7v7h-7z"/><path d="M3 14h7v7H3z"/><path d="M17 17m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0"/></svg>
+        Редактор сечения
+      </a>
+    </nav>
+    <main class="admin-main" id="main-content"></main>
+  </div>
+
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="sheet" id="sheet">
+    <div class="sheet-handle"></div>
+    <div id="sheet-content"></div>
+  </div>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
