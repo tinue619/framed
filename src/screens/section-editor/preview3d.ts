@@ -1,29 +1,42 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { Point } from '../../models';
+import type { Point, ProfileSide } from '../../models';
+
+// ── public types ─────────────────────────────────────────────
+
+export interface Assignment3D {
+  pts:     Point[];
+  offsetX?: number;   // смещение сечения по X (мм)
+  offsetY?: number;   // смещение сечения по Y (мм)
+  sides?:  ProfileSide[];   // если не задано — все 4 стороны
+  insets?: { tl: number; tr: number; br: number; bl: number };
+}
 
 export interface Preview3DConfig {
   container:      HTMLElement;
-  productW:       number;   // мм
-  productH:       number;   // мм
-  glassThickness: number;   // мм
-  profilePts?:    Point[];
+  productW:       number;         // мм
+  productH:       number;         // мм
+  glassThickness: number;         // мм
+  glassSetback:   number;         // мм (заводка — перекрытие стекла профилем)
+  assignments:    Assignment3D[];
 }
 
 export interface Preview3DHandle {
   destroy: () => void;
 }
 
+// ── factory ───────────────────────────────────────────────────
+
 export function createPreview3D(cfg: Preview3DConfig): Preview3DHandle {
-  const { container, productW: W, productH: H, glassThickness: GT, profilePts } = cfg;
+  const { container, productW: W, productH: H, glassThickness: GT, glassSetback: GS, assignments } = cfg;
 
   container.innerHTML = '';
   const cW = container.clientWidth  || 400;
-  const cH = container.clientHeight || 500;
+  const cH = container.clientHeight || 400;
 
   // ── Scene ────────────────────────────────────────────────────
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a202c);
+  scene.background = new THREE.Color(0xf0f4f6);
 
   // ── Camera ───────────────────────────────────────────────────
   const maxDim  = Math.max(W, H);
@@ -50,29 +63,47 @@ export function createPreview3D(cfg: Preview3DConfig): Preview3DHandle {
   // ── Controls ─────────────────────────────────────────────────
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 0, GT / 2);
-  controls.enableDamping  = true;
-  controls.dampingFactor  = 0.08;
-  controls.minDistance    = maxDim * 0.1;
-  controls.maxDistance    = maxDim * 8;
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance   = maxDim * 0.1;
+  controls.maxDistance   = maxDim * 8;
   controls.update();
 
   // ── Lights ───────────────────────────────────────────────────
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.0);
   sun.position.set(W, H * 1.4, maxDim * 2.2);
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0x7799bb, 0.28);
+  const fill = new THREE.DirectionalLight(0xaabbcc, 0.35);
   fill.position.set(-W * 0.6, -H * 0.5, maxDim * 0.4);
   scene.add(fill);
 
-  // ── Glass ────────────────────────────────────────────────────
-  const glassGeo  = new THREE.BoxGeometry(W, H, GT);
+  // ── Glass (с учётом заводки) ──────────────────────────────────
+  const ALL_SIDES: ProfileSide[] = ['top', 'bottom', 'left', 'right'];
+
+  // Собираем все стороны, которые перекрывают стекло
+  const covered = new Set<ProfileSide>();
+  for (const a of assignments) {
+    for (const s of (a.sides ?? ALL_SIDES)) covered.add(s);
+  }
+
+  const rL = covered.has('left')   ? GS : 0;
+  const rR = covered.has('right')  ? GS : 0;
+  const rT = covered.has('top')    ? GS : 0;
+  const rB = covered.has('bottom') ? GS : 0;
+
+  const glassW  = Math.max(1, W - rL - rR);
+  const glassH  = Math.max(1, H - rT - rB);
+  const glassCX = (rL - rR) / 2;
+  const glassCY = (rB - rT) / 2;
+
+  const glassGeo  = new THREE.BoxGeometry(glassW, glassH, GT);
   const glassMat  = new THREE.MeshPhysicalMaterial({
     color: 0x88ccdd, transparent: true, opacity: 0.28,
     roughness: 0.04, metalness: 0, side: THREE.DoubleSide,
   });
   const glassMesh = new THREE.Mesh(glassGeo, glassMat);
-  glassMesh.position.set(0, 0, GT / 2);
+  glassMesh.position.set(glassCX, glassCY, GT / 2);
   scene.add(glassMesh);
 
   const edgeMat  = new THREE.LineBasicMaterial({ color: 0x66aabb, opacity: 0.55, transparent: true });
@@ -80,45 +111,63 @@ export function createPreview3D(cfg: Preview3DConfig): Preview3DHandle {
   edgeLine.position.copy(glassMesh.position);
   scene.add(edgeLine);
 
-  // ── Profile frame ────────────────────────────────────────────
-  if (profilePts && profilePts.length >= 3) {
-    const profMat = new THREE.MeshStandardMaterial({
-      color: 0xd0d8e4, metalness: 0.72, roughness: 0.28, side: THREE.DoubleSide,
-    });
+  // ── Profile bars ─────────────────────────────────────────────
 
-    const mkShape = (pts: Point[], flipY = false) => {
-      const s = new THREE.Shape();
-      s.moveTo(pts[0].x, flipY ? -pts[0].y : pts[0].y);
-      for (let i = 1; i < pts.length; i++) s.lineTo(pts[i].x, flipY ? -pts[i].y : pts[i].y);
-      s.closePath();
-      return s;
-    };
+  const profMat = new THREE.MeshStandardMaterial({
+    color: 0xd0d8e4, metalness: 0.72, roughness: 0.28, side: THREE.DoubleSide,
+  });
 
-    const shapeN = mkShape(profilePts);
-    const shapeF = mkShape(profilePts, true);
+  const mkShape = (pts: Point[], ox: number, oy: number, flipY = false) => {
+    const s = new THREE.Shape();
+    const px = (p: Point) => p.x + ox;
+    const py = (p: Point) => flipY ? -(p.y + oy) : (p.y + oy);
+    s.moveTo(px(pts[0]), py(pts[0]));
+    for (let i = 1; i < pts.length; i++) s.lineTo(px(pts[i]), py(pts[i]));
+    s.closePath();
+    return s;
+  };
 
-    const addBar = (sh: THREE.Shape, depth: number, m: number[]) => {
-      const geo  = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false });
-      const mesh = new THREE.Mesh(geo, profMat);
-      mesh.matrixAutoUpdate = false;
-      mesh.matrix.set(
-        m[0],  m[1],  m[2],  m[3],
-        m[4],  m[5],  m[6],  m[7],
-        m[8],  m[9],  m[10], m[11],
-        m[12], m[13], m[14], m[15],
-      );
-      mesh.matrixWorldNeedsUpdate = true;
-      scene.add(mesh);
-    };
+  const addBar = (shape: THREE.Shape, depth: number, m: number[]) => {
+    if (depth <= 0) return;
+    const geo  = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+    const mesh = new THREE.Mesh(geo, profMat);
+    mesh.matrixAutoUpdate = false;
+    mesh.matrix.set(
+      m[0],  m[1],  m[2],  m[3],
+      m[4],  m[5],  m[6],  m[7],
+      m[8],  m[9],  m[10], m[11],
+      m[12], m[13], m[14], m[15],
+    );
+    mesh.matrixWorldNeedsUpdate = true;
+    scene.add(mesh);
+  };
 
-    // TOP — отражённый, вдоль W
-    addBar(shapeF, W, [ 0, 0, 1,-W/2,  0,-1, 0, H/2,  1, 0, 0, 0,  0, 0, 0, 1 ]);
-    // BOTTOM — нормальный, вдоль W
-    addBar(shapeN, W, [ 0, 0, 1,-W/2,  0,-1, 0,-H/2,  1, 0, 0, 0,  0, 0, 0, 1 ]);
-    // RIGHT — нормальный, вдоль H
-    addBar(shapeN, H, [ 0, 1, 0, W/2,  0, 0, 1,-H/2,  1, 0, 0, 0,  0, 0, 0, 1 ]);
-    // LEFT — отражённый, вдоль H
-    addBar(shapeF, H, [ 0, 1, 0,-W/2,  0, 0, 1,-H/2,  1, 0, 0, 0,  0, 0, 0, 1 ]);
+  for (const a of assignments) {
+    if (!a.pts || a.pts.length < 3) continue;
+
+    const activeSides = a.sides ?? ALL_SIDES;
+    const ci = a.insets ?? { tl: 0, tr: 0, br: 0, bl: 0 };
+    const ox = a.offsetX ?? 0;
+    const oy = a.offsetY ?? 0;
+    const shapeN = mkShape(a.pts, ox, oy);
+    const shapeF = mkShape(a.pts, ox, oy, true);
+
+    if (activeSides.includes('top')) {
+      const len = W - ci.tl - ci.tr;
+      addBar(shapeF, len, [ 0, 0, 1, -W/2 + ci.tl,  0,-1, 0, H/2,  1, 0, 0, 0,  0, 0, 0, 1 ]);
+    }
+    if (activeSides.includes('bottom')) {
+      const len = W - ci.bl - ci.br;
+      addBar(shapeN, len, [ 0, 0, 1, -W/2 + ci.bl,  0,-1, 0,-H/2,  1, 0, 0, 0,  0, 0, 0, 1 ]);
+    }
+    if (activeSides.includes('right')) {
+      const len = H - ci.tr - ci.br;
+      addBar(shapeN, len, [ 0, 1, 0, W/2,  0, 0, 1, -H/2 + ci.br,  1, 0, 0, 0,  0, 0, 0, 1 ]);
+    }
+    if (activeSides.includes('left')) {
+      const len = H - ci.tl - ci.bl;
+      addBar(shapeF, len, [ 0, 1, 0,-W/2,  0, 0, 1, -H/2 + ci.bl,  1, 0, 0, 0,  0, 0, 0, 1 ]);
+    }
   }
 
   // ── RAF loop ─────────────────────────────────────────────────

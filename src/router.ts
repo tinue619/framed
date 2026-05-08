@@ -1,14 +1,16 @@
-export type ScreenId = 'products' | 'product-editor' | 'section-editor';
+export type ScreenId = 'products' | 'product-editor' | 'profiles' | 'profile-editor' | 'section-editor';
 export interface Route { screen: ScreenId; id?: string; }
 export type RouteHandler = (r: Route) => void;
 
 const TITLES: Record<ScreenId, string> = {
   'products':       'Изделия',
   'product-editor': 'Изделие',
+  'profiles':       'Профили',
+  'profile-editor': 'Профиль',
   'section-editor': 'Редактор сечения',
 };
 
-const VALID: ScreenId[] = ['products', 'product-editor', 'section-editor'];
+const VALID: ScreenId[] = ['products', 'product-editor', 'profiles', 'profile-editor', 'section-editor'];
 
 export function navigate(screen: ScreenId, id?: string) {
   window.location.hash = id ? `${screen}/${id}` : screen;
@@ -28,9 +30,14 @@ export function initRouter(handler: RouteHandler) {
 export function updateNav(screen: ScreenId) {
   const el = document.getElementById('header-title');
   if (el) el.textContent = TITLES[screen] ?? 'Администрирование';
-  document.querySelectorAll<HTMLElement>('[data-screen]').forEach(e =>
-    e.classList.toggle('active', e.dataset.screen === screen)
-  );
+  document.querySelectorAll<HTMLElement>('[data-screen]').forEach(e => {
+    // Подсвечиваем родительский раздел для дочерних экранов
+    const s = e.dataset.screen!;
+    const active = s === screen
+      || (s === 'products'  && screen === 'product-editor')
+      || (s === 'profiles'  && screen === 'profile-editor');
+    e.classList.toggle('active', active);
+  });
   const main = document.querySelector<HTMLElement>('.admin-main');
   if (main) main.classList.toggle('se-fullscreen', screen === 'section-editor');
 }

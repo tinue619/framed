@@ -3,6 +3,8 @@ import { navigate } from '../../router';
 import { GLASS_TYPES } from '../../models';
 import type { Product } from '../../models';
 import { createTrajectoryCanvas } from './trajectory-canvas';
+import { createPreview3D } from '../section-editor/preview3d';
+import type { Preview3DHandle } from '../section-editor/preview3d';
 import { SectionCanvas } from '../section-editor/canvas';
 import { createState } from '../section-editor/state';
 import type { SectionState } from '../section-editor/state';
@@ -25,6 +27,7 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
   let canvas:      SectionCanvas | null = null;
   let resizeOff:   (() => void) | null = null;
   let trajDestroy: (() => void) | null = null;
+  let preview3d:   Preview3DHandle | null = null;
 
   // ── render ────────────────────────────────────────────────────
   root.innerHTML = `
@@ -88,8 +91,18 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
           </div>
         </div>
 
-        <!-- ② пусто (top-right) -->
-        <div class="pe-panel pe-panel--empty"></div>
+        <!-- ② 3D предпросмотр (top-right) -->
+        <div class="pe-panel pe-panel--dark">
+          <div class="pe-panel-header pe-panel-header--dark">
+            3D
+            <div class="pe-panel-hc">
+              <button class="pe-3d-btn" id="pe-3d-refresh" title="Обновить">
+                <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="pe-3d-container" id="pe-3d-container"></div>
+        </div>
 
         <!-- ③ компоновка профилей (bottom-left) -->
         <div class="pe-panel pe-panel--canvas">
@@ -151,6 +164,7 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
 
   canvas.setProfiles(getProfiles());
   renderProps();
+  refresh3D();
 
   // ── profile dropdown ──────────────────────────────────────────
   const addBtn      = root.querySelector<HTMLButtonElement>('#pe-add-profile')!;
@@ -166,7 +180,11 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
       ).join('');
       dropdown.querySelectorAll<HTMLElement>('[data-pid]').forEach(btn => {
         btn.addEventListener('click', () => {
-          secState.assignments.push({ id: newId(), profileId: btn.dataset.pid!, offsetX: 0, offsetY: 0 });
+          const n = secState.assignments.length;
+          secState.assignments.push({
+            id: newId(), profileId: btn.dataset.pid!,
+            offsetX: n * 6, offsetY: n * 6,
+          });
           canvas?.draw();
           closeDropdown();
         });
@@ -223,12 +241,39 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
     q('.pe-title').textContent = product.name;
   });
 
+  q<HTMLButtonElement>('#pe-3d-refresh').addEventListener('click', () => refresh3D());
+
   root.querySelector<HTMLButtonElement>('#pe-delete')?.addEventListener('click', () => {
     if (!confirm(`Удалить «${product.name}»?`)) return;
     deleteProduct(product.id);
     showToast('Удалено', 'success');
     navigate('products');
   });
+
+  // ── 3D preview ───────────────────────────────────────────────
+
+  function refresh3D() {
+    preview3d?.destroy();
+    const container = root.querySelector<HTMLElement>('#pe-3d-container');
+    if (!container) return;
+    const profiles = getProfiles();
+    preview3d = createPreview3D({
+      container,
+      productW:       product.width,
+      productH:       product.height,
+      glassThickness: secState.glassThickness,
+      glassSetback:   secState.glassSetback,
+      assignments: secState.assignments
+        .map(a => ({
+          pts:     profiles.find(p => p.id === a.profileId)?.shapes?.[0] ?? [],
+          offsetX: a.offsetX,
+          offsetY: a.offsetY,
+          sides:   a.sides,
+          insets:  a.insets,
+        }))
+        .filter(a => a.pts.length >= 3),
+    });
+  }
 
   // ── profile properties panel ──────────────────────────────────
 
@@ -267,6 +312,7 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
 
   return () => {
     canvas?.destroy();
+    preview3d?.destroy();
     trajDestroy?.();
     resizeOff?.();
     document.removeEventListener('click', closeDropdown);

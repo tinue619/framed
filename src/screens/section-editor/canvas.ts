@@ -324,9 +324,11 @@ export class SectionCanvas {
       this.drag = { type: 'assignment', id: hit, startSX: sx, startSY: sy,
                     origOffsetX: a?.offsetX ?? 0, origOffsetY: a?.offsetY ?? 0 };
       this.state.selected = hit;
+      this.onChange();
       this.draw();
     } else {
       this.state.selected = null;
+      this.onChange();
       this.draw();
     }
   }

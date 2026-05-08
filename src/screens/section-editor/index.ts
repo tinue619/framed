@@ -292,14 +292,18 @@ export class SectionEditor {
     this.preview?.destroy();
     const container = this.root.querySelector<HTMLElement>('#se-3d-container')!;
     const profiles  = getProfiles();
-    const firstPts  = profiles[0]?.shapes?.[0] ?? undefined;
 
     this.preview = createPreview3D({
       container,
       productW:       this.state.width3d,
       productH:       this.state.height3d,
       glassThickness: this.state.glassThickness,
-      profilePts:     firstPts,
+      glassSetback:   this.state.glassSetback,
+      assignments: this.state.assignments
+        .map(a => ({
+          pts: profiles.find(p => p.id === a.profileId)?.shapes?.[0] ?? [],
+        }))
+        .filter(a => a.pts.length >= 3),
     });
   }
 }

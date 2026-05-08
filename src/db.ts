@@ -34,6 +34,7 @@ export const deleteProduct = (id: string)  => set('products', getProducts().filt
 // ── Profiles ─────────────────────────────────────────────────
 
 export const getProfiles   = (): Profile[] => get<Profile[]>('profiles') ?? [];
+export const getProfile    = (id: string): Profile | null => getProfiles().find(x => x.id === id) ?? null;
 export const saveProfile   = (p: Profile)  => { const l = getProfiles(); upsert(l, p); set('profiles', l); return p; };
 export const deleteProfile = (id: string)  => set('profiles', getProfiles().filter(x => x.id !== id));
 
