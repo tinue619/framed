@@ -12,12 +12,21 @@ export interface CornerInsets {
 }
 
 export interface ProfileAssignment {
-  id:       string;
+  id:        string;
   profileId: string;
-  offsetX:  number;
-  offsetY:  number;
-  sides?:   ProfileSide[];
-  insets?:  CornerInsets;
+  offsetX:   number;
+  offsetY:   number;
+  sides?:    ProfileSide[];
+  insets?:   CornerInsets;
+}
+
+// ── МДФ основание ─────────────────────────────────────────────
+
+export interface MdfAssignment {
+  id:      string;
+  offsetX: number;     // смещение сечения по X (мм)
+  offsetY: number;     // смещение сечения по Y (мм)
+  shape:   Point[];    // поперечное сечение (задаётся прямо в изделии)
 }
 
 // ── Изделие ───────────────────────────────────────────────────
@@ -41,6 +50,7 @@ export interface Product {
   glassThickness?:     number;              // мм
   glassSetback?:       number;              // мм
   profileAssignments?: ProfileAssignment[];
+  mdfPieces?:          MdfAssignment[];
 }
 
 // ── Профиль ───────────────────────────────────────────────────

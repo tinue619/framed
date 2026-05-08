@@ -1,21 +1,22 @@
-import type { ProfileAssignment } from '../../models';
+import type { ProfileAssignment, MdfAssignment } from '../../models';
 
 export interface SectionState {
   // данные изделия
-  glassThickness: number;   // мм
-  glassSetback:   number;   // мм (заводка)
+  glassThickness: number;
+  glassSetback:   number;
   assignments:    ProfileAssignment[];
+  mdfPieces:      MdfAssignment[];
   // вид canvas
   panX:  number;
   panY:  number;
-  scale: number;            // пикселей на мм
+  scale: number;
   // интерактивность
-  hover:    string | 'edge' | null;  // id назначения или 'edge'
+  hover:    string | 'edge' | null;
   selected: string | null;
   // 3D
   show3d:    boolean;
-  width3d:   number;   // мм
-  height3d:  number;   // мм
+  width3d:   number;
+  height3d:  number;
 }
 
 export function createState(): SectionState {
@@ -23,6 +24,7 @@ export function createState(): SectionState {
     glassThickness: 8,
     glassSetback:   10,
     assignments:    [],
+    mdfPieces:      [],
     panX:  0, panY: 0, scale: 4,
     hover: null, selected: null,
     show3d: false, width3d: 400, height3d: 600,

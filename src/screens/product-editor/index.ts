@@ -1,13 +1,14 @@
 import { getProduct, saveProduct, deleteProduct, getProfiles, newId } from '../../db';
 import { navigate } from '../../router';
 import { GLASS_TYPES } from '../../models';
-import type { Product } from '../../models';
+import type { Product, MdfAssignment } from '../../models';
 import { createTrajectoryCanvas } from './trajectory-canvas';
 import { createPreview3D } from '../section-editor/preview3d';
 import type { Preview3DHandle } from '../section-editor/preview3d';
 import { SectionCanvas } from '../section-editor/canvas';
 import { createState } from '../section-editor/state';
 import type { SectionState } from '../section-editor/state';
+import { ShapeCanvas } from '../profile-editor/shape-canvas';
 import { esc } from '../../shared/utils';
 import { showToast } from '../../shared/toast';
 
@@ -22,6 +23,9 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
   secState.glassSetback   = product.glassSetback   ?? 10;
   secState.assignments    = product.profileAssignments
     ? JSON.parse(JSON.stringify(product.profileAssignments))
+    : [];
+  secState.mdfPieces = product.mdfPieces
+    ? JSON.parse(JSON.stringify(product.mdfPieces))
     : [];
 
   let canvas:      SectionCanvas | null = null;
@@ -49,7 +53,7 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
 
       <div class="pe-grid">
 
-        <!-- ① поля изделия (top-left) -->
+        <!-- ① поля изделия -->
         <div class="pe-panel">
           <div class="pe-panel-header">Изделие</div>
           <div class="pe-panel-body">
@@ -91,7 +95,7 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
           </div>
         </div>
 
-        <!-- ② 3D предпросмотр (top-right) -->
+        <!-- ② 3D предпросмотр -->
         <div class="pe-panel pe-panel--dark">
           <div class="pe-panel-header pe-panel-header--dark">
             3D
@@ -104,10 +108,10 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
           <div class="pe-3d-container" id="pe-3d-container"></div>
         </div>
 
-        <!-- ③ компоновка профилей (bottom-left) -->
+        <!-- ③ компоновка сечений -->
         <div class="pe-panel pe-panel--canvas">
           <div class="pe-panel-header">
-            Компоновка профилей
+            Компоновка
             <div class="pe-panel-hc">
               <label class="pe-label">Стекло</label>
               <input class="pe-input pe-num pe-num--sm" id="pe-gt" type="number"
@@ -126,6 +130,10 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
                 </button>
                 <div class="pe-add-dropdown" id="pe-add-dropdown"></div>
               </div>
+              <button class="pe-add-btn pe-add-btn--mdf" id="pe-add-mdf" title="Добавить МДФ основание">
+                <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="1"/></svg>
+                МДФ
+              </button>
             </div>
           </div>
           <div class="pe-canvas-wrap" id="pe-canvas-wrap">
@@ -133,9 +141,9 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
           </div>
         </div>
 
-        <!-- ④ свойства профиля (bottom-right) -->
+        <!-- ④ свойства выбранного элемента -->
         <div class="pe-panel pe-panel--props">
-          <div class="pe-panel-header" id="pe-props-title">Свойства профиля</div>
+          <div class="pe-panel-header" id="pe-props-title">Свойства</div>
           <div class="pe-props-traj" id="pe-traj-container"></div>
         </div>
 
@@ -167,8 +175,8 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
   refresh3D();
 
   // ── profile dropdown ──────────────────────────────────────────
-  const addBtn      = root.querySelector<HTMLButtonElement>('#pe-add-profile')!;
-  const dropdown    = root.querySelector<HTMLElement>('#pe-add-dropdown')!;
+  const addBtn   = root.querySelector<HTMLButtonElement>('#pe-add-profile')!;
+  const dropdown = root.querySelector<HTMLElement>('#pe-add-dropdown')!;
 
   function buildDropdown() {
     const profiles = getProfiles();
@@ -200,6 +208,25 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
     dropdown.classList.contains('open') ? closeDropdown() : openDropdown();
   });
   document.addEventListener('click', closeDropdown);
+
+  // ── add MDF ──────────────────────────────────────────────────
+  root.querySelector('#pe-add-mdf')!.addEventListener('click', () => {
+    const gt = secState.glassThickness;
+    const n  = secState.mdfPieces.length;
+    // Дефолтное сечение: прямоугольник шириной = толщина стекла, высота 18 мм (стандарт МДФ)
+    secState.mdfPieces.push({
+      id:      newId(),
+      offsetX: n * 4,
+      offsetY: -(18 + n * 4),
+      shape: [
+        { x: -gt / 2, y: 0  },
+        { x:  gt / 2, y: 0  },
+        { x:  gt / 2, y: 18 },
+        { x: -gt / 2, y: 18 },
+      ],
+    });
+    canvas?.draw();
+  });
 
   // ── events ────────────────────────────────────────────────────
   const q = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
@@ -236,6 +263,7 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
     product.glassThickness     = Math.round(secState.glassThickness * 10) / 10;
     product.glassSetback       = Math.round(secState.glassSetback   * 10) / 10;
     product.profileAssignments = JSON.parse(JSON.stringify(secState.assignments));
+    product.mdfPieces          = JSON.parse(JSON.stringify(secState.mdfPieces));
     saveProduct(product);
     showToast('Сохранено', 'success');
     q('.pe-title').textContent = product.name;
@@ -272,13 +300,16 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
           insets:  a.insets,
         }))
         .filter(a => a.pts.length >= 3),
+      mdfPieces: secState.mdfPieces
+        .filter(m => m.shape.length >= 3)
+        .map(m => ({ shape: m.shape, offsetX: m.offsetX, offsetY: m.offsetY })),
     });
   }
 
-  // ── profile properties panel ──────────────────────────────────
+  // ── panel ④: свойства выбранного элемента ────────────────────
 
   function renderProps() {
-    const titleEl = root.querySelector<HTMLElement>('#pe-props-title');
+    const titleEl      = root.querySelector<HTMLElement>('#pe-props-title');
     const trajContainer = root.querySelector<HTMLElement>('#pe-traj-container');
     if (!trajContainer) return;
 
@@ -286,28 +317,61 @@ export function renderProductEditor(root: HTMLElement, id?: string): () => void 
     trajDestroy = null;
     trajContainer.innerHTML = '';
 
-    const a = secState.assignments.find(x => x.id === secState.selected);
+    // МДФ выбран?
+    const mdf = secState.mdfPieces.find(x => x.id === secState.selected);
+    if (mdf) {
+      if (titleEl) titleEl.textContent = 'МДФ — сечение';
+      trajDestroy = createMdfEditor(trajContainer, mdf, () => canvas?.draw());
+      return;
+    }
 
+    // Профиль выбран?
+    const a = secState.assignments.find(x => x.id === secState.selected);
     if (!a) {
-      if (titleEl) titleEl.textContent = 'Свойства профиля';
+      if (titleEl) titleEl.textContent = 'Свойства';
       trajContainer.innerHTML = `
         <div class="pe-props-empty">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          Выберите профиль на схеме
+          Выберите элемент на схеме
         </div>`;
       return;
     }
 
     const prof = getProfiles().find(p => p.id === a.profileId);
     if (titleEl) titleEl.textContent = prof?.name ?? 'Профиль';
-
     trajDestroy = createTrajectoryCanvas(
-      trajContainer,
-      product.width,
-      product.height,
-      a,
-      () => canvas?.draw(),
+      trajContainer, product.width, product.height, a, () => canvas?.draw(),
     );
+  }
+
+  // ── inline MDF shape editor ───────────────────────────────────
+
+  function createMdfEditor(
+    container: HTMLElement,
+    mdf: MdfAssignment,
+    onChange: () => void,
+  ): () => void {
+    const cv = document.createElement('canvas');
+    cv.style.cssText = 'display:block;width:100%;height:100%;outline:none;';
+    container.appendChild(cv);
+
+    const sc = new ShapeCanvas(cv, (pts) => {
+      mdf.shape = pts;
+      onChange();
+    });
+    sc.setPoints(mdf.shape, secState.glassThickness);
+
+    const ro = new ResizeObserver(() => {
+      sc.resize(container.clientWidth || 200, container.clientHeight || 200);
+    });
+    ro.observe(container);
+    sc.resize(container.clientWidth || 200, container.clientHeight || 200);
+
+    return () => {
+      sc.destroy();
+      ro.disconnect();
+      cv.remove();
+    };
   }
 
   return () => {

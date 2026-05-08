@@ -229,6 +229,8 @@ body {
 }
 .pe-add-btn svg { width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2.5; stroke-linecap:round; }
 .pe-add-btn:hover { border-color:var(--accent); color:var(--accent); }
+.pe-add-btn--mdf  { border-color:#c9a87a; color:#78481e; }
+.pe-add-btn--mdf:hover { border-color:#78481e; color:#78481e; background:#fdf6ee; }
 
 .pe-add-dropdown {
   display:none; position:absolute; top:calc(100% + 4px); right:0;

@@ -47,6 +47,7 @@ export class SectionCanvas {
     this.drawGrid(W, H);
     this.drawAxes(W, H);
     this.drawGlass(W, H);
+    this.drawMdfPieces();
     this.drawAssignments();
     this.drawHint(W, H);
   }
@@ -212,6 +213,39 @@ export class SectionCanvas {
     }
   }
 
+  private drawMdfPieces() {
+    const { mdfPieces, selected, hover } = this.state;
+    const ctx = this.ctx;
+
+    for (const m of mdfPieces) {
+      if (m.shape.length < 2) continue;
+      const isSel = selected === m.id;
+      const isHov = hover    === m.id;
+
+      ctx.beginPath();
+      m.shape.forEach((p, i) => {
+        const s = this.toScreen(p.x + m.offsetX, p.y + m.offsetY);
+        if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+      });
+      ctx.closePath();
+      ctx.fillStyle   = isSel ? 'rgba(120,72,30,0.28)' : isHov ? 'rgba(120,72,30,0.16)' : 'rgba(120,72,30,0.10)';
+      ctx.fill();
+      ctx.strokeStyle = isSel ? '#78481e' : isHov ? '#9a6030' : 'rgba(120,72,30,0.45)';
+      ctx.lineWidth   = isSel ? 2 : 1.5;
+      ctx.setLineDash([]);
+      ctx.stroke();
+
+      if (isHov || isSel) {
+        const cx = m.shape.reduce((s, p) => s + p.x, 0) / m.shape.length + m.offsetX;
+        const cy = m.shape.reduce((s, p) => s + p.y, 0) / m.shape.length + m.offsetY;
+        const sc = this.toScreen(cx, cy);
+        ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText('МДФ', sc.x + 1, sc.y + 1);
+        ctx.fillStyle = '#1d1d1f';               ctx.fillText('МДФ', sc.x,     sc.y);
+      }
+    }
+  }
+
   private drawHint(W: number, H: number) {
     this.ctx.fillStyle = 'rgba(0,0,0,0.25)'; this.ctx.font = '10px sans-serif';
     this.ctx.textAlign = 'center'; this.ctx.textBaseline = 'bottom';
@@ -226,12 +260,20 @@ export class SectionCanvas {
     if (Math.abs(sy - yEdge) < 8) return 'edge';
 
     const mm = this.toMm(sx, sy);
+
+    // МДФ (поверх профилей по z-порядку)
+    for (const m of [...state.mdfPieces].reverse()) {
+      if (m.shape.length < 3) continue;
+      if (this.ptInPoly(mm.x - m.offsetX, mm.y - m.offsetY, m.shape)) return m.id;
+    }
+
+    // Профильные назначения
     for (const a of [...state.assignments].reverse()) {
       const prof = this.profiles.get(a.profileId);
       if (!prof?.shapes?.[0]?.length) continue;
-      const pts = prof.shapes[0];
-      if (this.ptInPoly(mm.x - a.offsetX, mm.y - a.offsetY, pts)) return a.id;
+      if (this.ptInPoly(mm.x - a.offsetX, mm.y - a.offsetY, prof.shapes[0])) return a.id;
     }
+
     return null;
   }
 
@@ -292,10 +334,12 @@ export class SectionCanvas {
         this.state.glassSetback = Math.max(0, (this.drag.origSetback ?? 0) + dy);
         this.onChange();
       } else if (this.drag.type === 'assignment' && this.drag.id) {
-        const a = this.state.assignments.find(x => x.id === this.drag!.id);
-        if (a) {
-          a.offsetX = (this.drag.origOffsetX ?? 0) + dmx;
-          a.offsetY = (this.drag.origOffsetY ?? 0) + dmy;
+        const item =
+          this.state.assignments.find(x => x.id === this.drag!.id) ??
+          this.state.mdfPieces.find(x => x.id === this.drag!.id);
+        if (item) {
+          item.offsetX = (this.drag.origOffsetX ?? 0) + dmx;
+          item.offsetY = (this.drag.origOffsetY ?? 0) + dmy;
           this.onChange();
         }
       }
@@ -320,9 +364,11 @@ export class SectionCanvas {
     if (hit === 'edge') {
       this.drag = { type: 'edge', startSX: sx, startSY: sy, origSetback: this.state.glassSetback };
     } else if (hit) {
-      const a = this.state.assignments.find(x => x.id === hit);
+      const item =
+        this.state.assignments.find(x => x.id === hit) ??
+        this.state.mdfPieces.find(x => x.id === hit);
       this.drag = { type: 'assignment', id: hit, startSX: sx, startSY: sy,
-                    origOffsetX: a?.offsetX ?? 0, origOffsetY: a?.offsetY ?? 0 };
+                    origOffsetX: item?.offsetX ?? 0, origOffsetY: item?.offsetY ?? 0 };
       this.state.selected = hit;
       this.onChange();
       this.draw();

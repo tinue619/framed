@@ -6,19 +6,26 @@ import type { Point, ProfileSide } from '../../models';
 
 export interface Assignment3D {
   pts:     Point[];
-  offsetX?: number;   // смещение сечения по X (мм)
-  offsetY?: number;   // смещение сечения по Y (мм)
-  sides?:  ProfileSide[];   // если не задано — все 4 стороны
+  offsetX?: number;
+  offsetY?: number;
+  sides?:  ProfileSide[];
   insets?: { tl: number; tr: number; br: number; bl: number };
+}
+
+export interface MdfPiece3D {
+  shape:   Point[];
+  offsetX: number;   // смещение сечения по X (→ Z в мировых координатах)
+  offsetY: number;
 }
 
 export interface Preview3DConfig {
   container:      HTMLElement;
-  productW:       number;         // мм
-  productH:       number;         // мм
-  glassThickness: number;         // мм
-  glassSetback:   number;         // мм (заводка — перекрытие стекла профилем)
+  productW:       number;
+  productH:       number;
+  glassThickness: number;
+  glassSetback:   number;
   assignments:    Assignment3D[];
+  mdfPieces?:     MdfPiece3D[];
 }
 
 export interface Preview3DHandle {
@@ -168,6 +175,33 @@ export function createPreview3D(cfg: Preview3DConfig): Preview3DHandle {
       const len = H - ci.tl - ci.bl;
       addBar(shapeF, len, [ 0, 1, 0,-W/2,  0, 0, 1, -H/2 + ci.bl,  1, 0, 0, 0,  0, 0, 0, 1 ]);
     }
+  }
+
+  // ── MDF panels ───────────────────────────────────────────────
+
+  const mdfMat = new THREE.MeshStandardMaterial({
+    color: 0x8b6343, metalness: 0.04, roughness: 0.88, side: THREE.DoubleSide,
+  });
+
+  for (const m of (cfg.mdfPieces ?? [])) {
+    if (m.shape.length < 3) continue;
+
+    // X координаты сечения → Z в мировых координатах (направление толщины)
+    const zCoords  = m.shape.map(p => p.x + m.offsetX);
+    const zMin     = Math.min(...zCoords);
+    const zMax     = Math.max(...zCoords);
+    const zThick   = zMax - zMin;
+    if (zThick <= 0) continue;
+
+    const geo  = new THREE.BoxGeometry(W, H, zThick);
+    const mesh = new THREE.Mesh(geo, mdfMat);
+    mesh.position.set(0, 0, (zMin + zMax) / 2);
+    scene.add(mesh);
+
+    const mdfEdgeMat = new THREE.LineBasicMaterial({ color: 0x5a3a1a, opacity: 0.35, transparent: true });
+    const mdfEdge    = new THREE.LineSegments(new THREE.EdgesGeometry(geo), mdfEdgeMat);
+    mdfEdge.position.copy(mesh.position);
+    scene.add(mdfEdge);
   }
 
   // ── RAF loop ─────────────────────────────────────────────────
